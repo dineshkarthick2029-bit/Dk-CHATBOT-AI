@@ -67,6 +67,26 @@ body {
   border-color: var(--accent);
 }
 
+.model-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+.model-bar select {
+  flex: 1;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  max-width: 260px;
+}
+
 .chat-window {
   flex: 1;
   overflow-y: auto;
