@@ -37,7 +37,7 @@ app.post("/api/chat", async (req, res) => {
     });
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -55,18 +55,40 @@ app.post("/api/chat", async (req, res) => {
       }
     );
 
-    const data = await response.json();
-
     if (!response.ok) {
-      console.error("Gemini error:", data);
-      return res.status(500).json({ error: data.error?.message || "Gemini API error" });
+      const errData = await response.json().catch(() => ({}));
+      console.error("Gemini error:", errData);
+      return res.status(500).json({ error: errData.error?.message || "Gemini API error" });
     }
 
-    const reply =
-      data.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") ||
-      "Sorry, I could not generate a reply.";
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
 
-    res.json({ reply });
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop(); // keep the last (possibly incomplete) line for next time
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const jsonStr = line.slice(6).trim();
+        if (!jsonStr) continue;
+        try {
+          const parsed = JSON.parse(jsonStr);
+          const piece = parsed.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") || "";
+          if (piece) res.write(piece);
+        } catch (e) {
+          // ignore partial/unparseable chunks
+        }
+      }
+    }
+
+    res.end();
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error: " + err.message });
