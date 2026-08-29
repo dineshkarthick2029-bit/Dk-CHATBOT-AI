@@ -26,7 +26,14 @@
       </div>
     </main>
 
+    <div id="imagePreviewBar" class="image-preview-bar" style="display:none;">
+      <img id="imagePreviewThumb" src="" alt="attached photo" />
+      <button type="button" id="removeImageBtn">✕</button>
+    </div>
+
     <form id="composer" class="composer">
+      <input type="file" id="imageInput" accept="image/*" style="display:none;" />
+      <button type="button" id="attachBtn" title="Attach a photo">📎</button>
       <textarea id="userInput" placeholder="Message DK-AI..." rows="1"></textarea>
       <button type="submit" id="sendBtn">➤</button>
     </form>
