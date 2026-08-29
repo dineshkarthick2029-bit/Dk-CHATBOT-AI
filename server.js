@@ -15,7 +15,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GEMINI_MODEL = "gemini-3.6-flash"; // free-tier model
-const GROQ_MODEL = "llama-3.3-70b-versatile"; // free Groq model
+const GROQ_MODEL = "openai/gpt-oss-120b"; // free Groq model (replaces deprecated llama-3.3-70b-versatile)
 
 // ---------- CHAT + CODE endpoint (ChatGPT / Claude / Copilot style) ----------
 app.post("/api/chat", async (req, res) => {
