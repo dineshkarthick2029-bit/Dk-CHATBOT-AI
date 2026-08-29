@@ -13,87 +13,163 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GEMINI_MODEL = "gemini-3.6-flash"; // free-tier model
+const GROQ_MODEL = "llama-3.3-70b-versatile"; // free Groq model
 
 // ---------- CHAT + CODE endpoint (ChatGPT / Claude / Copilot style) ----------
 app.post("/api/chat", async (req, res) => {
   try {
-    const { messages } = req.body; // [{role: "user"/"model", text: "..."}]
+    const { messages, model } = req.body; // model: "gemini" or "groq"
 
-    if (!GEMINI_API_KEY) {
-      return res.status(500).json({ error: "Missing GEMINI_API_KEY on server. Add it in your .env file." });
+    if (model === "groq") {
+      return handleGroqChat(messages, res);
     }
-
-    // Convert our simple message format into Gemini's expected format
-    const contents = messages.map((m) => {
-      const parts = [{ text: m.text }];
-      if (m.image && m.image.data && m.image.mimeType) {
-        parts.push({ inlineData: { mimeType: m.image.mimeType, data: m.image.data } });
-      }
-      return {
-        role: m.role === "assistant" ? "model" : "user",
-        parts,
-      };
-    });
-
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents,
-          systemInstruction: {
-            parts: [
-              {
-                text:
-                  "You are DK-AI, a helpful assistant made by DK. When asked to write code, use proper markdown code blocks with the language name (like ```python). Be clear and concise.",
-              },
-            ],
-          },
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      console.error("Gemini error:", errData);
-      return res.status(500).json({ error: errData.error?.message || "Gemini API error" });
-    }
-
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop(); // keep the last (possibly incomplete) line for next time
-
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        const jsonStr = line.slice(6).trim();
-        if (!jsonStr) continue;
-        try {
-          const parsed = JSON.parse(jsonStr);
-          const piece = parsed.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") || "";
-          if (piece) res.write(piece);
-        } catch (e) {
-          // ignore partial/unparseable chunks
-        }
-      }
-    }
-
-    res.end();
+    return handleGeminiChat(messages, res);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error: " + err.message });
   }
 });
+
+async function handleGeminiChat(messages, res) {
+  if (!GEMINI_API_KEY) {
+    return res.status(500).json({ error: "Missing GEMINI_API_KEY on server. Add it in your .env file." });
+  }
+
+  // Convert our simple message format into Gemini's expected format
+  const contents = messages.map((m) => {
+    const parts = [{ text: m.text }];
+    if (m.image && m.image.data && m.image.mimeType) {
+      parts.push({ inlineData: { mimeType: m.image.mimeType, data: m.image.data } });
+    }
+    return {
+      role: m.role === "assistant" ? "model" : "user",
+      parts,
+    };
+  });
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents,
+        systemInstruction: {
+          parts: [
+            {
+              text:
+                "You are DK-AI, a helpful assistant made by DK. When asked to write code, use proper markdown code blocks with the language name (like ```python). Be clear and concise.",
+            },
+          ],
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    console.error("Gemini error:", errData);
+    return res.status(500).json({ error: errData.error?.message || "Gemini API error" });
+  }
+
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const jsonStr = line.slice(6).trim();
+      if (!jsonStr) continue;
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const piece = parsed.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") || "";
+        if (piece) res.write(piece);
+      } catch (e) {
+        // ignore partial/unparseable chunks
+      }
+    }
+  }
+
+  res.end();
+}
+
+async function handleGroqChat(messages, res) {
+  if (!GROQ_API_KEY) {
+    return res.status(500).json({ error: "Missing GROQ_API_KEY on server. Add it in your .env file." });
+  }
+
+  // Convert to Groq's OpenAI-style format (text only, no images)
+  const groqMessages = [
+    {
+      role: "system",
+      content:
+        "You are DK-AI, a helpful assistant made by DK. When asked to write code, use proper markdown code blocks with the language name (like ```python). Be clear and concise.",
+    },
+    ...messages.map((m) => ({
+      role: m.role === "assistant" ? "assistant" : "user",
+      content: m.text,
+    })),
+  ];
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages: groqMessages,
+      stream: true,
+    }),
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    console.error("Groq error:", errData);
+    return res.status(500).json({ error: errData.error?.message || "Groq API error" });
+  }
+
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const jsonStr = line.slice(6).trim();
+      if (!jsonStr || jsonStr === "[DONE]") continue;
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const piece = parsed.choices?.[0]?.delta?.content || "";
+        if (piece) res.write(piece);
+      } catch (e) {
+        // ignore partial/unparseable chunks
+      }
+    }
+  }
+
+  res.end();
+}
 
 // ---------- SEARCH endpoint (Perplexity style: web search + AI summary) ----------
 app.post("/api/search", async (req, res) => {
