@@ -6,9 +6,38 @@ const composer = document.getElementById("composer");
 const userInput = document.getElementById("userInput");
 const sendBtn = document.getElementById("sendBtn");
 const modeButtons = document.querySelectorAll(".mode-btn");
+const attachBtn = document.getElementById("attachBtn");
+const imageInput = document.getElementById("imageInput");
+const imagePreviewBar = document.getElementById("imagePreviewBar");
+const imagePreviewThumb = document.getElementById("imagePreviewThumb");
+const removeImageBtn = document.getElementById("removeImageBtn");
 
 let mode = "chat"; // "chat" or "search"
-let history = []; // { role: "user" | "assistant", text: "" }
+let history = []; // { role: "user" | "assistant", text: "", image?: {mimeType, data} }
+let attachedImage = null; // { mimeType, data, previewUrl }
+
+attachBtn.addEventListener("click", () => imageInput.click());
+
+imageInput.addEventListener("change", () => {
+  const file = imageInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const dataUrl = reader.result; // "data:image/png;base64,AAAA..."
+    const base64 = dataUrl.split(",")[1];
+    attachedImage = { mimeType: file.type, data: base64, previewUrl: dataUrl };
+    imagePreviewThumb.src = dataUrl;
+    imagePreviewBar.style.display = "flex";
+  };
+  reader.readAsDataURL(file);
+  imageInput.value = ""; // allow picking the same file again later
+});
+
+removeImageBtn.addEventListener("click", () => {
+  attachedImage = null;
+  imagePreviewBar.style.display = "none";
+});
+
 
 modeButtons.forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -37,11 +66,14 @@ userInput.addEventListener("keydown", (e) => {
 composer.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = userInput.value.trim();
-  if (!text) return;
+  if (!text && !attachedImage) return;
 
-  addMessage("user", text);
+  const imageForThisMessage = attachedImage;
+  addMessage("user", text || "(photo)", null, imageForThisMessage?.previewUrl);
   userInput.value = "";
   userInput.style.height = "auto";
+  attachedImage = null;
+  imagePreviewBar.style.display = "none";
   sendBtn.disabled = true;
 
   const typingEl = addTyping();
@@ -61,7 +93,11 @@ composer.addEventListener("submit", async (e) => {
         addMessage("bot", data.answer, data.sources);
       }
     } else {
-      history.push({ role: "user", text });
+      const userMsg = { role: "user", text: text || "Describe this photo." };
+      if (imageForThisMessage) {
+        userMsg.image = { mimeType: imageForThisMessage.mimeType, data: imageForThisMessage.data };
+      }
+      history.push(userMsg);
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -84,13 +120,23 @@ composer.addEventListener("submit", async (e) => {
   sendBtn.disabled = false;
 });
 
-function addMessage(role, text, sources) {
+function addMessage(role, text, sources, imageUrl) {
   const wrap = document.createElement("div");
   wrap.className = "msg " + (role === "user" ? "user" : "bot");
 
   const bubble = document.createElement("div");
   bubble.className = "bubble";
-  bubble.innerHTML = marked.parse(text);
+
+  if (imageUrl) {
+    const img = document.createElement("img");
+    img.src = imageUrl;
+    img.className = "chat-image";
+    bubble.appendChild(img);
+  }
+
+  const textDiv = document.createElement("div");
+  textDiv.innerHTML = marked.parse(text);
+  bubble.appendChild(textDiv);
 
   if (sources && sources.length) {
     const srcDiv = document.createElement("div");
