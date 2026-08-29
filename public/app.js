@@ -98,18 +98,39 @@ composer.addEventListener("submit", async (e) => {
         userMsg.image = { mimeType: imageForThisMessage.mimeType, data: imageForThisMessage.data };
       }
       history.push(userMsg);
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: history }),
       });
-      const data = await res.json();
+
       typingEl.remove();
-      if (data.error) {
-        addMessage("bot", "⚠️ " + data.error);
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        addMessage("bot", "⚠️ " + (errData.error || "Something went wrong."));
       } else {
-        addMessage("bot", data.reply);
-        history.push({ role: "assistant", text: data.reply });
+        const botWrap = addMessage("bot", "");
+        const textDiv = botWrap.querySelector(".bot-text");
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          fullText += decoder.decode(value, { stream: true });
+          textDiv.textContent = fullText; // plain text while streaming, fast to update
+          chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        // once streaming is done, render proper markdown + code highlighting
+        textDiv.innerHTML = marked.parse(fullText || "Sorry, I could not generate a reply.");
+        textDiv.querySelectorAll("pre code").forEach((block) => hljs.highlightElement(block));
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+
+        history.push({ role: "assistant", text: fullText });
       }
     }
   } catch (err) {
@@ -135,7 +156,8 @@ function addMessage(role, text, sources, imageUrl) {
   }
 
   const textDiv = document.createElement("div");
-  textDiv.innerHTML = marked.parse(text);
+  textDiv.className = "bot-text";
+  if (text) textDiv.innerHTML = marked.parse(text);
   bubble.appendChild(textDiv);
 
   if (sources && sources.length) {
