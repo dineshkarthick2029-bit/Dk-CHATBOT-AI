@@ -8,7 +8,7 @@ const path = require("path");
 require("dotenv").config();
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -25,10 +25,16 @@ app.post("/api/chat", async (req, res) => {
     }
 
     // Convert our simple message format into Gemini's expected format
-    const contents = messages.map((m) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.text }],
-    }));
+    const contents = messages.map((m) => {
+      const parts = [{ text: m.text }];
+      if (m.image && m.image.data && m.image.mimeType) {
+        parts.push({ inlineData: { mimeType: m.image.mimeType, data: m.image.data } });
+      }
+      return {
+        role: m.role === "assistant" ? "model" : "user",
+        parts,
+      };
+    });
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
