@@ -6,6 +6,7 @@ const composer = document.getElementById("composer");
 const userInput = document.getElementById("userInput");
 const sendBtn = document.getElementById("sendBtn");
 const modeButtons = document.querySelectorAll(".mode-btn");
+const modelSelect = document.getElementById("modelSelect");
 const attachBtn = document.getElementById("attachBtn");
 const imageInput = document.getElementById("imageInput");
 const imagePreviewBar = document.getElementById("imagePreviewBar");
@@ -93,6 +94,15 @@ composer.addEventListener("submit", async (e) => {
         addMessage("bot", data.answer, data.sources);
       }
     } else {
+      const selectedModel = modelSelect.value;
+
+      if (imageForThisMessage && selectedModel === "groq") {
+        addMessage("bot", "⚠️ Photos only work with Gemini Flash. Switch the model dropdown to Gemini and resend.");
+        typingEl.remove();
+        sendBtn.disabled = false;
+        return;
+      }
+
       const userMsg = { role: "user", text: text || "Describe this photo." };
       if (imageForThisMessage) {
         userMsg.image = { mimeType: imageForThisMessage.mimeType, data: imageForThisMessage.data };
@@ -102,7 +112,7 @@ composer.addEventListener("submit", async (e) => {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({ messages: history, model: selectedModel }),
       });
 
       typingEl.remove();
