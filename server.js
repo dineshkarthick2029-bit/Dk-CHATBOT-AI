@@ -14,8 +14,10 @@ app.use(express.static(path.join(__dirname, "public")));
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const GEMINI_MODEL = "gemini-3.6-flash"; // free-tier model
 const GROQ_MODEL = "openai/gpt-oss-120b"; // free Groq model (replaces deprecated llama-3.3-70b-versatile)
+const OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"; // free OpenRouter model - check openrouter.ai/models if this stops working, free model IDs rotate
 
 // ---------- CHAT + CODE endpoint (ChatGPT / Claude / Copilot style) ----------
 app.post("/api/chat", async (req, res) => {
@@ -24,6 +26,9 @@ app.post("/api/chat", async (req, res) => {
 
     if (model === "groq") {
       return handleGroqChat(messages, res);
+    }
+    if (model === "openrouter") {
+      return handleOpenRouterChat(messages, res);
     }
     return handleGeminiChat(messages, res);
   } catch (err) {
@@ -94,6 +99,74 @@ async function handleGeminiChat(messages, res) {
       try {
         const parsed = JSON.parse(jsonStr);
         const piece = parsed.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") || "";
+        if (piece) res.write(piece);
+      } catch (e) {
+        // ignore partial/unparseable chunks
+      }
+    }
+  }
+
+  res.end();
+}
+
+async function handleOpenRouterChat(messages, res) {
+  if (!OPENROUTER_API_KEY) {
+    return res.status(500).json({ error: "Missing OPENROUTER_API_KEY on server. Add it in your .env file." });
+  }
+
+  const orMessages = [
+    {
+      role: "system",
+      content:
+        "You are DK-AI, a helpful assistant made by DK. When asked to write code, use proper markdown code blocks with the language name (like ```python). Be clear and concise.",
+    },
+    ...messages.map((m) => ({
+      role: m.role === "assistant" ? "assistant" : "user",
+      content: m.text,
+    })),
+  ];
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      "HTTP-Referer": "https://dk-chatbot-ai.onrender.com",
+      "X-Title": "DK-AI",
+    },
+    body: JSON.stringify({
+      model: OPENROUTER_MODEL,
+      messages: orMessages,
+      stream: true,
+    }),
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    console.error("OpenRouter error:", errData);
+    return res.status(500).json({ error: errData.error?.message || "OpenRouter API error" });
+  }
+
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const jsonStr = line.slice(6).trim();
+      if (!jsonStr || jsonStr === "[DONE]") continue;
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const piece = parsed.choices?.[0]?.delta?.content || "";
         if (piece) res.write(piece);
       } catch (e) {
         // ignore partial/unparseable chunks
