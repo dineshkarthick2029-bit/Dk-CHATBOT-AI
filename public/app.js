@@ -96,7 +96,7 @@ composer.addEventListener("submit", async (e) => {
     } else {
       const selectedModel = modelSelect.value;
 
-      if (imageForThisMessage && selectedModel === "groq") {
+      if (imageForThisMessage && (selectedModel === "groq" || selectedModel === "openrouter")) {
         addMessage("bot", "⚠️ Photos only work with Gemini Flash. Switch the model dropdown to Gemini and resend.");
         typingEl.remove();
         sendBtn.disabled = false;
