@@ -1,7 +1,7 @@
 // DK-AI backend server
 // This file receives requests from the website (public/app.js)
-// and forwards them to Google Gemini, Groq, OpenRouter (for chat/code)
-// and Tavily (for search). Your API keys stay safely on the server.
+// and forwards them to Google Gemini (for chat/code) and Tavily (for search).
+// Your API keys stay safely on the server and are never shown to website visitors.
 
 const express = require("express");
 const path = require("path");
@@ -17,12 +17,12 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const GEMINI_MODEL = "gemini-3.6-flash"; // free-tier model
 const GROQ_MODEL = "openai/gpt-oss-120b"; // free Groq model (replaces deprecated llama-3.3-70b-versatile)
-const OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"; // free OpenRouter model - check openrouter.ai/models if this stops working, free model IDs rotate
+const OPENROUTER_MODEL = "openrouter/free"; // OpenRouter's auto-router - always picks a currently-available free model, so it self-heals when the free list rotates
 
 // ---------- CHAT + CODE endpoint (ChatGPT / Claude / Copilot style) ----------
 app.post("/api/chat", async (req, res) => {
   try {
-    const { messages, model } = req.body; // model: "gemini", "groq", or "openrouter"
+    const { messages, model } = req.body; // model: "gemini" or "groq"
 
     if (model === "groq") {
       return handleGroqChat(messages, res);
@@ -42,6 +42,7 @@ async function handleGeminiChat(messages, res) {
     return res.status(500).json({ error: "Missing GEMINI_API_KEY on server. Add it in your .env file." });
   }
 
+  // Convert our simple message format into Gemini's expected format
   const contents = messages.map((m) => {
     const parts = [{ text: m.text }];
     if (m.image && m.image.data && m.image.mimeType) {
@@ -98,72 +99,6 @@ async function handleGeminiChat(messages, res) {
       try {
         const parsed = JSON.parse(jsonStr);
         const piece = parsed.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") || "";
-        if (piece) res.write(piece);
-      } catch (e) {
-        // ignore partial/unparseable chunks
-      }
-    }
-  }
-
-  res.end();
-}
-
-async function handleGroqChat(messages, res) {
-  if (!GROQ_API_KEY) {
-    return res.status(500).json({ error: "Missing GROQ_API_KEY on server. Add it in your .env file." });
-  }
-
-  const groqMessages = [
-    {
-      role: "system",
-      content:
-        "You are DK-AI, a helpful assistant made by DK. When asked to write code, use proper markdown code blocks with the language name (like ```python). Be clear and concise.",
-    },
-    ...messages.map((m) => ({
-      role: m.role === "assistant" ? "assistant" : "user",
-      content: m.text,
-    })),
-  ];
-
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      messages: groqMessages,
-      stream: true,
-    }),
-  });
-
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    console.error("Groq error:", errData);
-    return res.status(500).json({ error: errData.error?.message || "Groq API error" });
-  }
-
-  res.setHeader("Content-Type", "text/plain; charset=utf-8");
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop();
-
-    for (const line of lines) {
-      if (!line.startsWith("data: ")) continue;
-      const jsonStr = line.slice(6).trim();
-      if (!jsonStr || jsonStr === "[DONE]") continue;
-      try {
-        const parsed = JSON.parse(jsonStr);
-        const piece = parsed.choices?.[0]?.delta?.content || "";
         if (piece) res.write(piece);
       } catch (e) {
         // ignore partial/unparseable chunks
@@ -242,6 +177,73 @@ async function handleOpenRouterChat(messages, res) {
   res.end();
 }
 
+async function handleGroqChat(messages, res) {
+  if (!GROQ_API_KEY) {
+    return res.status(500).json({ error: "Missing GROQ_API_KEY on server. Add it in your .env file." });
+  }
+
+  // Convert to Groq's OpenAI-style format (text only, no images)
+  const groqMessages = [
+    {
+      role: "system",
+      content:
+        "You are DK-AI, a helpful assistant made by DK. When asked to write code, use proper markdown code blocks with the language name (like ```python). Be clear and concise.",
+    },
+    ...messages.map((m) => ({
+      role: m.role === "assistant" ? "assistant" : "user",
+      content: m.text,
+    })),
+  ];
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages: groqMessages,
+      stream: true,
+    }),
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    console.error("Groq error:", errData);
+    return res.status(500).json({ error: errData.error?.message || "Groq API error" });
+  }
+
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const jsonStr = line.slice(6).trim();
+      if (!jsonStr || jsonStr === "[DONE]") continue;
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const piece = parsed.choices?.[0]?.delta?.content || "";
+        if (piece) res.write(piece);
+      } catch (e) {
+        // ignore partial/unparseable chunks
+      }
+    }
+  }
+
+  res.end();
+}
+
 // ---------- SEARCH endpoint (Perplexity style: web search + AI summary) ----------
 app.post("/api/search", async (req, res) => {
   try {
@@ -254,6 +256,7 @@ app.post("/api/search", async (req, res) => {
       return res.status(500).json({ error: "Missing GEMINI_API_KEY on server. Add it in your .env file." });
     }
 
+    // Step 1: search the live web with Tavily
     const searchResp = await fetch("https://api.tavily.com/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -276,6 +279,7 @@ app.post("/api/search", async (req, res) => {
       .map((s, i) => `[${i + 1}] ${s.title}\n${s.content}\nURL: ${s.url}`)
       .join("\n\n");
 
+    // Step 2: ask Gemini to write an answer grounded in those search results
     const prompt = `Using ONLY the web search results below, answer the user's question. Cite sources using [1], [2] etc. matching the numbers below. If the results don't contain the answer, say so.\n\nQuestion: ${query}\n\nSearch results:\n${context}`;
 
     const aiResp = await fetch(
