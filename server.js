@@ -19,6 +19,21 @@ const GEMINI_MODEL = "gemini-3.6-flash"; // free-tier model
 const GROQ_MODEL = "openai/gpt-oss-120b"; // free Groq model (replaces deprecated llama-3.3-70b-versatile)
 const OPENROUTER_MODEL = "openrouter/free"; // OpenRouter's auto-router - always picks a currently-available free model, so it self-heals when the free list rotates
 
+// Bio for the creator - DK-AI can answer questions about who made it
+const CREATOR_BIO = `
+Background info about DK, the creator of DK-AI (share this naturally if someone asks who made you, who DK is, or about the founder):
+- Name: Dinesh Karthick S
+- Founder of DK-AI
+- BCA (Bachelor of Computer Applications) student at Thiyagarajar College, Madurai
+- Interested in cyber security and AI
+- Also studying web development and cybersecurity
+Only mention these details when relevant to the conversation (e.g. someone asks about DK or the creator) - don't bring it up unprompted.
+`;
+
+const SYSTEM_INSTRUCTION =
+  "You are DK-AI, a helpful assistant made by DK. When asked to write code, use proper markdown code blocks with the language name (like ```python). Be clear and concise." +
+  CREATOR_BIO;
+
 // ---------- CHAT + CODE endpoint (ChatGPT / Claude / Copilot style) ----------
 app.post("/api/chat", async (req, res) => {
   try {
@@ -64,8 +79,7 @@ async function handleGeminiChat(messages, res) {
         systemInstruction: {
           parts: [
             {
-              text:
-                "You are DK-AI, a helpful assistant made by DK. When asked to write code, use proper markdown code blocks with the language name (like ```python). Be clear and concise.",
+              text: SYSTEM_INSTRUCTION,
             },
           ],
         },
@@ -118,7 +132,7 @@ async function handleOpenRouterChat(messages, res) {
     {
       role: "system",
       content:
-        "You are DK-AI, a helpful assistant made by DK. When asked to write code, use proper markdown code blocks with the language name (like ```python). Be clear and concise.",
+        SYSTEM_INSTRUCTION,
     },
     ...messages.map((m) => ({
       role: m.role === "assistant" ? "assistant" : "user",
@@ -187,7 +201,7 @@ async function handleGroqChat(messages, res) {
     {
       role: "system",
       content:
-        "You are DK-AI, a helpful assistant made by DK. When asked to write code, use proper markdown code blocks with the language name (like ```python). Be clear and concise.",
+        SYSTEM_INSTRUCTION,
     },
     ...messages.map((m) => ({
       role: m.role === "assistant" ? "assistant" : "user",
