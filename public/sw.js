@@ -1,4 +1,9 @@
-const CACHE_NAME = "dk-ai-shell-v1";
+// DK-AI service worker
+// Caches the app's own interface files so it loads instantly and can be
+// installed as an app. It does NOT cache AI replies - those always need
+// a live internet connection.
+
+const CACHE_NAME = "dk-ai-shell-v2";
 const SHELL_FILES = [
   "/",
   "/index.html",
@@ -29,14 +34,20 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
+
+  // Never cache API calls - chat/search must always be live
   if (url.pathname.startsWith("/api/")) {
     return;
   }
+
+  // For app shell files: try cache first, fall back to network
   event.respondWith(
     caches.match(event.request).then((cached) => {
       return (
         cached ||
-        fetch(event.request).catch(() => {})
+        fetch(event.request).catch(() => {
+          // if offline and not cached, just fail gracefully
+        })
       );
     })
   );
