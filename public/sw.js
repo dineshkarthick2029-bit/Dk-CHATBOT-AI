@@ -3,7 +3,7 @@
 // installed as an app. It does NOT cache AI replies - those always need
 // a live internet connection.
 
-const CACHE_NAME = "dk-ai-shell-v2";
+const CACHE_NAME = "dk-ai-shell-v3";
 const SHELL_FILES = [
   "/",
   "/index.html",
