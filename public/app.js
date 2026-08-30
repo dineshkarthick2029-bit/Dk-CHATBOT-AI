@@ -1,5 +1,5 @@
 // DK-AI frontend logic
-// Talks to our own backend (server.js), which talks to Gemini + Tavily.
+// Talks to our own backend (server.js), which talks to Gemini + Groq + OpenRouter.
 
 const chatWindow = document.getElementById("chatWindow");
 const composer = document.getElementById("composer");
@@ -17,29 +17,6 @@ let mode = "chat"; // "chat" or "search"
 let history = []; // { role: "user" | "assistant", text: "", image?: {mimeType, data} }
 let attachedImage = null; // { mimeType, data, previewUrl }
 
-attachBtn.addEventListener("click", () => imageInput.click());
-
-imageInput.addEventListener("change", () => {
-  const file = imageInput.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const dataUrl = reader.result; // "data:image/png;base64,AAAA..."
-    const base64 = dataUrl.split(",")[1];
-    attachedImage = { mimeType: file.type, data: base64, previewUrl: dataUrl };
-    imagePreviewThumb.src = dataUrl;
-    imagePreviewBar.style.display = "flex";
-  };
-  reader.readAsDataURL(file);
-  imageInput.value = ""; // allow picking the same file again later
-});
-
-removeImageBtn.addEventListener("click", () => {
-  attachedImage = null;
-  imagePreviewBar.style.display = "none";
-});
-
-
 modeButtons.forEach((btn) => {
   btn.addEventListener("click", () => {
     modeButtons.forEach((b) => b.classList.remove("active"));
@@ -50,13 +27,33 @@ modeButtons.forEach((btn) => {
   });
 });
 
-// auto-grow textarea
+attachBtn.addEventListener("click", () => imageInput.click());
+
+imageInput.addEventListener("change", () => {
+  const file = imageInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const dataUrl = reader.result;
+    const base64 = dataUrl.split(",")[1];
+    attachedImage = { mimeType: file.type, data: base64, previewUrl: dataUrl };
+    imagePreviewThumb.src = dataUrl;
+    imagePreviewBar.style.display = "flex";
+  };
+  reader.readAsDataURL(file);
+  imageInput.value = "";
+});
+
+removeImageBtn.addEventListener("click", () => {
+  attachedImage = null;
+  imagePreviewBar.style.display = "none";
+});
+
 userInput.addEventListener("input", () => {
   userInput.style.height = "auto";
   userInput.style.height = Math.min(userInput.scrollHeight, 120) + "px";
 });
 
-// send on Enter (Shift+Enter for newline)
 userInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
@@ -131,11 +128,10 @@ composer.addEventListener("submit", async (e) => {
           const { done, value } = await reader.read();
           if (done) break;
           fullText += decoder.decode(value, { stream: true });
-          textDiv.textContent = fullText; // plain text while streaming, fast to update
+          textDiv.textContent = fullText;
           chatWindow.scrollTop = chatWindow.scrollHeight;
         }
 
-        // once streaming is done, render proper markdown + code highlighting
         textDiv.innerHTML = marked.parse(fullText || "Sorry, I could not generate a reply.");
         textDiv.querySelectorAll("pre code").forEach((block) => hljs.highlightElement(block));
         chatWindow.scrollTop = chatWindow.scrollHeight;
