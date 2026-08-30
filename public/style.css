@@ -1,12 +1,13 @@
 :root {
-  --bg: #0e0f13;
-  --panel: #16181f;
-  --bubble-bot: #1c1f29;
-  --bubble-user: #4f46e5;
-  --accent: #7c6dfa;
-  --text: #e9e9f1;
-  --text-dim: #9a9aab;
-  --border: #26293380;
+  --bg: #0b0d12;
+  --panel: #161922;
+  --bubble-bot: #1a1e28;
+  --bubble-user: #ff6b35;
+  --accent: #ff6b35;
+  --accent-dim: #7a3a20;
+  --text: #f3f1ea;
+  --text-dim: #8a8f9c;
+  --border: #24293380;
 }
 
 * { box-sizing: border-box; }
@@ -47,7 +48,14 @@ body {
   font-size: 1.1rem;
   letter-spacing: 0.3px;
 }
-.brand span { color: var(--accent); }
+.brand span {
+  color: var(--accent);
+  animation: glow 2.8s ease-in-out infinite;
+}
+@keyframes glow {
+  0%, 100% { text-shadow: 0 0 0 rgba(255,107,53,0); }
+  50% { text-shadow: 0 0 10px rgba(255,107,53,0.55); }
+}
 
 .modes { display: flex; gap: 6px; }
 
@@ -63,7 +71,7 @@ body {
 }
 .mode-btn.active {
   background: var(--accent);
-  color: white;
+  color: #1a0e07;
   border-color: var(--accent);
 }
 
@@ -109,23 +117,24 @@ body {
 }
 .msg.bot .bubble {
   background: var(--bubble-bot);
+  border: 1px solid var(--border);
   border-top-left-radius: 4px;
 }
 .msg.user .bubble {
   background: var(--bubble-user);
-  color: white;
+  color: #1a0e07;
   border-top-right-radius: 4px;
 }
 
 .bubble pre {
-  background: #0a0b0f;
+  background: #05060a;
   padding: 10px;
   border-radius: 8px;
   overflow-x: auto;
   margin: 8px 0;
 }
 .bubble code { font-size: 0.85rem; }
-.bubble a { color: #a5b4fc; }
+.bubble a { color: #ffb088; }
 
 .sources {
   margin-top: 8px;
@@ -170,9 +179,9 @@ textarea#userInput {
 textarea#userInput:focus { outline: 1px solid var(--accent); }
 
 #sendBtn {
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--accent), #e0431a);
   border: none;
-  color: white;
+  color: #1a0e07;
   width: 46px;
   border-radius: 12px;
   font-size: 1.1rem;
